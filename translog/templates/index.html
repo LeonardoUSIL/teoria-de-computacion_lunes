@@ -1,0 +1,205 @@
+{% macro chip(tipo, lex) -%}<span class="tk t-{{ tipo }}" title="{{ tipo }}">{{ lex }}</span>{%- endmacro %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minicompilador de guías de remisión | TransLog Perú</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+<header class="cabecera">
+  <div class="ancho">
+    <p class="curso">Teoría de Computación, Facultad de Ingeniería e Inteligencia Artificial</p>
+    <h1>Minicompilador de guías de remisión</h1>
+    <p class="sub">Analizador léxico y sintáctico con autómatas finitos y gramática libre de contexto para validar el código de guía antes del despacho en TransLog Perú S.A.C.</p>
+  </div>
+</header>
+
+<main class="ancho">
+  <!-- ETAPA 1: GUI, lenguaje inicial, tokens y lexemas -->
+  <section class="entrada" aria-label="Entrada y análisis léxico">
+    <div class="col-izq">
+      <form class="bloque" method="post" action="/#resultados" enctype="multipart/form-data">
+        <h2>Archivo de guías</h2>
+        <label class="selector">
+          <input type="file" id="archivo" name="archivo" accept=".txt,text/plain">
+          <span id="nombre-archivo">Elegir archivo .txt</span>
+        </label>
+        <label class="etiqueta" for="contenido">Contenido (puedes editarlo antes de compilar)</label>
+        <textarea id="contenido" name="contenido" rows="10" spellcheck="false">{{ texto }}</textarea>
+        <div class="acciones">
+          <button type="submit" class="boton">Compilar</button>
+          <a href="{{ url_for('ejemplo') }}">Descargar archivo de ejemplo</a>
+        </div>
+      </form>
+
+      <div class="bloque">
+        <h2>Formato esperado</h2>
+        <p>Una guía por línea. Las líneas vacías y las que empiezan con <code>#</code> se ignoran.</p>
+<pre class="formato"># Guías de remisión
+Guia: GR-LIM-2026-000123
+Guia: GR-CAL-2026-000124</pre>
+        <div class="anatomia" aria-label="Partes del código">
+          <div>{{ chip('PREFIJO', 'GR') }}<small>prefijo</small></div>
+          <div>{{ chip('GUION', '-') }}</div>
+          <div>{{ chip('SEDE', 'LIM') }}<small>sede</small></div>
+          <div>{{ chip('GUION', '-') }}</div>
+          <div>{{ chip('ANIO', '2026') }}<small>año</small></div>
+          <div>{{ chip('GUION', '-') }}</div>
+          <div>{{ chip('CORRELATIVO', '000123') }}<small>correlativo</small></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="bloque lexico">
+      <h2>Análisis léxico</h2>
+      <p>Tokens que reconoce el compilador. Cada lexema se reconoce con el AFD de su expresión regular.</p>
+      <table>
+        <thead><tr><th>Token</th><th>Lexema de ejemplo</th><th>Expresión regular</th></tr></thead>
+        <tbody>
+        {% for t in tokens %}
+          <tr>
+            <td>{{ chip(t.nombre, t.nombre) }}<div class="desc">{{ t.descripcion }}</div></td>
+            <td class="mono">{{ t.ejemplo }}</td>
+            <td><code>{{ t.er }}</code></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </aside>
+  </section>
+
+  {% if r %}
+  <section id="resultados" class="resultados">
+    <nav class="indice" aria-label="Secciones del resultado">
+      <a href="#validacion">Validación</a>
+      <a href="#tokens-usados">Tokens usados</a>
+      <a href="#automatas">ER, AFND y AFD</a>
+      <a href="#gramatica">Gramática y árbol</a>
+    </nav>
+
+    <div class="bloque" id="validacion">
+      <h2>Resultado de la validación</h2>
+      {% if r.total == 0 %}
+        <p>El archivo no contiene guías. Escribe al menos una línea con el formato <code>Guia: GR-LIM-2026-000123</code>.</p>
+      {% else %}
+      <p class="resumen"><strong>{{ r.validas }} de {{ r.total }}</strong> guías válidas, {{ r.invalidas }} con error. Compilado el {{ r.fecha }} en {{ '%.1f'|format(r.ms) }} ms.</p>
+      <div class="barra" role="img" aria-label="{{ r.validas }} válidas y {{ r.invalidas }} inválidas">
+        <span class="ok" style="flex:{{ r.validas }}"></span><span class="mal" style="flex:{{ r.invalidas }}"></span>
+      </div>
+      <div class="tabla-scroll">
+      <table class="validacion">
+        <thead><tr><th>Línea</th><th>Código</th><th>Estado</th><th>Fase</th><th>Motivo</th></tr></thead>
+        <tbody>
+        {% for l in r.lineas %}
+          <tr class="{{ 'v-ok' if l.valida else 'v-mal' }}">
+            <td class="mono">{{ l.nro }}</td>
+            <td class="chips">{% for tk in l.tokens %}{{ chip(tk.tipo, tk.lexema) }} {% endfor %}</td>
+            <td><strong>{{ 'Válida' if l.valida else 'Inválida' }}</strong></td>
+            <td>{{ l.fase or 'Aceptada' }}</td>
+            <td>{{ l.motivo or 'La cadena pertenece al lenguaje.' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="bloque" id="tokens-usados">
+      <h2>Tokens usados</h2>
+      {% if r.usados %}
+      <p class="conteo">{% for n in r.usados %}{{ chip(n, n) }} <span class="n">×{{ r.lexemas|selectattr('token','equalto',n)|list|length }}</span> {% endfor %}</p>
+      <div class="tabla-scroll alto">
+      <table>
+        <thead><tr><th>Línea</th><th>Columna</th><th>Token</th><th>Lexema</th></tr></thead>
+        <tbody>
+        {% for x in r.lexemas %}
+          <tr><td class="mono">{{ x.nro }}</td><td class="mono">{{ x.col }}</td><td>{{ chip(x.token, x.token) }}</td><td class="mono">{{ x.lexema }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}<p>No se reconoció ningún token.</p>{% endif %}
+    </div>
+
+    <div class="bloque" id="automatas">
+      <h2>Expresión regular, AFND y AFD por token</h2>
+      {% if r.usados %}
+      <div class="pastillas" role="tablist">
+        {% for n in r.usados %}<button type="button" role="tab" class="t-{{ n }}" data-token="{{ n }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ n }}</button>{% endfor %}
+      </div>
+      {% for n in r.usados %}{% set a = automatas[n] %}
+      <div class="panel-token" id="panel-{{ n }}" {% if not loop.first %}hidden{% endif %}>
+        <h3>Expresión regular</h3>
+        <p><code class="er">{{ a.def.er }}</code> <span class="desc">{{ a.def.descripcion }}</span></p>
+
+        <h3>AFND <span class="desc">Thompson, {{ a.n_afnd }} estados (p0 a p{{ a.n_afnd - 1 }}), ε = transición vacía</span></h3>
+        <div class="lienzo">{{ a.svg_afnd|safe }}</div>
+
+        <h3>AFD <span class="desc">construcción de subconjuntos, {{ a.n_afd }} estados</span></h3>
+        <dl class="quintupla">
+          <dt>M</dt><dd>(Q, Σ, δ, q0, F)</dd>
+          <dt>Q</dt><dd class="mono">{{ a.quintupla.Q }}</dd>
+          <dt>Σ</dt><dd class="mono">{{ a.quintupla.S }}</dd>
+          <dt>q0</dt><dd class="mono">{{ a.quintupla.q0 }}</dd>
+          <dt>F</dt><dd class="mono">{{ a.quintupla.F }}</dd>
+        </dl>
+        <div class="dos-tablas">
+          <div>
+            <h4>Tabla de transiciones δ</h4>
+            <div class="tabla-scroll">
+            <table class="delta">
+              <thead><tr><th></th>{% for c in a.tabla_cab %}<th class="mono">{{ c }}</th>{% endfor %}</tr></thead>
+              <tbody>
+              {% for fila in a.tabla_filas %}{% set i = loop.index0 %}
+                <tr><th class="mono">{{ '→' if i == 0 }}{{ '*' if i in a.afd.finales }}q{{ i }}</th>{% for d in fila %}<td class="mono">{{ 'q%d'|format(d) if d is not none else '—' }}</td>{% endfor %}</tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            </div>
+            <p class="nota">→ estado inicial, * estado final. «—» es la transición al estado de error (omitido en el gráfico).</p>
+          </div>
+          <div>
+            <h4>Estados del AFD como subconjuntos del AFND</h4>
+            <div class="tabla-scroll">
+            <table>
+              <thead><tr><th>AFD</th><th>Conjunto de estados AFND</th></tr></thead>
+              <tbody>{% for q, s in a.subconjuntos %}<tr><td class="mono">{{ q }}</td><td class="mono">{{ s }}</td></tr>{% endfor %}</tbody>
+            </table>
+            </div>
+          </div>
+        </div>
+        <div class="lienzo">{{ a.svg_afd|safe }}</div>
+      </div>
+      {% endfor %}
+      {% else %}<p>No hay tokens reconocidos para mostrar sus autómatas.</p>{% endif %}
+    </div>
+
+    <div class="bloque" id="gramatica">
+      <h2>Gramática y árbol de derivación</h2>
+      <p>El analizador sintáctico es descendente predictivo: compara la secuencia de tokens con las producciones de la gramática libre de contexto.</p>
+<pre class="formato">{% for nt, der in producciones %}{{ nt }} → {{ der }}
+{% endfor %}</pre>
+      {% set ok = r.lineas|selectattr('valida')|list %}
+      {% for l in ok[:15] %}
+      <details {% if loop.first %}open{% endif %}>
+        <summary>Línea {{ l.nro }}: {{ l.texto }}</summary>
+        <div class="lienzo">{{ l.svg_arbol|safe }}</div>
+      </details>
+      {% else %}<p>Ninguna guía fue válida, por lo tanto no hay árboles de derivación.</p>{% endfor %}
+      {% if ok|length > 15 %}<p class="nota">Se muestran los árboles de las primeras 15 guías válidas.</p>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+</main>
+
+<footer class="ancho pie">Proyecto final de Teoría de Computación. Los datos se procesan en memoria y no se guardan.</footer>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
